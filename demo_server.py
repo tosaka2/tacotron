@@ -86,6 +86,7 @@ if __name__ == '__main__':
     help='Hyperparameter overrides as a comma-separated list of name=value pairs')
   args = parser.parse_args()
   os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+  hparams.max_iters = 100
   hparams.parse(args.hparams)
   print(hparams_debug_string())
   synthesizer.load(args.checkpoint)

@@ -1,101 +1,126 @@
-import tensorflow as tf
-from tensorflow.contrib.rnn import GRUCell
+import chainer
+from chainer import Variable
+import chainer.functions as F
+import chainer.links as L
+
+import numpy as np
+import numpy.random as random
+
+import hparams as hp
+
+class PreNet(chainer.Chain):
+  def __init__(self):
+    super(PreNet, self).__init__()
+    with self.init_scope():
+      self.fc1 = L.Linear(None, 256)
+      self.fc2 = L.Linear(None, 128)
+
+  def __call__(self, e):
+    act = F.relu
+    e = F.dropout(act(self.fc1(e)))
+    e = F.dropout(act(self.fc2(e)))
+    return e
+
+class CBHG(chainer.Chain):
+  def __init__(self, in_size, bank_k, proj_filters1, proj_filters2):
+    super(CBHG, self).__init__()
+    with self.init_scope():
+      self.conv1d_banks = [Conv1DwithBatchNorm(in_size, 128, i + 1) for i in range(bank_k)]
+      self.conv1d_proj1 = Conv1DwithBatchNorm(128, proj_filters1, 3)
+      self.conv1d_proj2 = Conv1DwithBatchNorm(proj_filters1, proj_filters2, 3)
+      self.highways = [L.Highway(proj_filters2) for i in range(4)] # The parameters of the original paper are probably wrong.
+      self.gru = L.NStepBiGRU(1, proj_filters2, 128, dropout=0)
 
 
-def prenet(inputs, is_training, layer_sizes=[256, 128], scope=None):
-  x = inputs
-  drop_rate = 0.5 if is_training else 0.0
-  with tf.variable_scope(scope or 'prenet'):
-    for i, size in enumerate(layer_sizes):
-      dense = tf.layers.dense(x, units=size, activation=tf.nn.relu, name='dense_%d' % (i+1))
-      x = tf.layers.dropout(dense, rate=drop_rate, name='dropout_%d' % (i+1))
-  return x
+  def __call__(self, e):
+    act = F.relu
+    inputs = e
+    # Convolution bank: concatenate on the last axis to stack channels from all convolutions
+    e = F.concat(np.array([act(conv1d(e)) for conv1d in self.conv1d_banks])) # uncertain
 
-
-def encoder_cbhg(inputs, input_lengths, is_training):
-  return cbhg(
-    inputs,
-    input_lengths,
-    is_training,
-    scope='encoder_cbhg',
-    K=16,
-    projections=[128, 128])
-
-
-def post_cbhg(inputs, input_dim, is_training):
-  return cbhg(
-    inputs,
-    None,
-    is_training,
-    scope='post_cbhg',
-    K=8,
-    projections=[256, input_dim])
-
-
-def cbhg(inputs, input_lengths, is_training, scope, K, projections):
-  with tf.variable_scope(scope):
-    with tf.variable_scope('conv_bank'):
-      # Convolution bank: concatenate on the last axis to stack channels from all convolutions
-      conv_outputs = tf.concat(
-        [conv1d(inputs, k, 128, tf.nn.relu, is_training, 'conv1d_%d' % k) for k in range(1, K+1)],
-        axis=-1
-      )
-
-    # Maxpooling:
-    maxpool_output = tf.layers.max_pooling1d(
-      conv_outputs,
-      pool_size=2,
-      strides=1,
-      padding='same')
+    # Maxpooling
+    e = max_pooling1d(e, 2, stride=1) #uncertain ksize
 
     # Two projection layers:
-    proj1_output = conv1d(maxpool_output, 3, projections[0], tf.nn.relu, is_training, 'proj_1')
-    proj2_output = conv1d(proj1_output, 3, projections[1], None, is_training, 'proj_2')
+    e = act(self.conv1d_proj1(e))
+    e = act(self.conv1d_proj2(e))
 
     # Residual connection:
-    highway_input = proj2_output + inputs
-
-    # Handle dimensionality mismatch:
-    if highway_input.shape[2] != 128:
-      highway_input = tf.layers.dense(highway_input, 128)
+    e = e + inputs
 
     # 4-layer HighwayNet:
-    for i in range(4):
-      highway_input = highwaynet(highway_input, 'highway_%d' % (i+1))
-    rnn_input = highway_input
-
+    for highway in self.highways:
+      e = highway(e) # uncertain
+    
     # Bidirectional RNN
-    outputs, states = tf.nn.bidirectional_dynamic_rnn(
-      GRUCell(128),
-      GRUCell(128),
-      rnn_input,
-      sequence_length=input_lengths,
-      dtype=tf.float32)
-    return tf.concat(outputs, axis=2)  # Concat forward and backward
+    _, e = self.gru(None, e)
+
+    return e
+
+def get_encoder_cbhg():
+  return CBHG(128, 16, 128, 128)
+
+def get_decoder_cbhg():
+  return CBHG(hp.num_mels, 16, 256, 128)
+
+# which is better, max_pooling_nd or max_pooling2d
+def max_pooling1d(input, kernel_size, stride=1, pad=0):
+  return F.max_pooling_nd(input, ksize=(1,kernel_size), stride=(1,stride), pad=pad)
+
+'''
+def max_pooling1d(input, in_channels, kernel_size, stride=1, pad=0):
+  return F.max_pooling_2d(input, (in_channels, kernel_size), (in_channels, stride), (0, pad))
+'''
+
+# Convoution1D->BatchNormalization
+class Conv1DwithBatchNorm(chainer.Chain):
+  def __init__(self, in_channels, out_channels, kernal_size):
+    super(Conv1DwithBatchNorm, self).__init__()
+    with self.init_scope():
+      # Conv1d by Conv2d
+      # uncertain
+      self.conv1d = L.Convolution2D(1, out_channels, (in_channels, kernal_size))
+      self.batch_norm = L.BatchNormalization(out_channels)
+
+  def __call__(self, e):
+    e = self.conv1d(e)
+    e = self.batch_norm(e)
+    return e
 
 
-def highwaynet(inputs, scope):
-  with tf.variable_scope(scope):
-    H = tf.layers.dense(
-      inputs,
-      units=128,
-      activation=tf.nn.relu,
-      name='H')
-    T = tf.layers.dense(
-      inputs,
-      units=128,
-      activation=tf.nn.sigmoid,
-      name='T',
-      bias_initializer=tf.constant_initializer(-1.0))
-    return H * T + inputs * (1.0 - T)
+class Attention(chainer.Chain):
 
+    """
+    Attention module https://arxiv.org/abs/1409.0473
+    """
 
-def conv1d(inputs, kernel_size, channels, activation, is_training, scope):
-  with tf.variable_scope(scope):
-    conv1d_output = tf.layers.conv1d(
-      inputs,
-      filters=channels,
-      kernel_size=kernel_size,
-      activation=activation,
-      padding='same')
-    return tf.layers.batch_normalization(conv1d_output, training=is_training)
+    def __init__(self, hidden_size):
+      super(Attention, self).__init__()
+      with self.init_scope():
+        self.w1 = L.Linear(hidden_size, hidden_size)
+        self.w2 = L.Linear(hidden_size, hidden_size)
+        self.v = Variable(random.randn(hidden_size))
+        self.hidden_size = hidden_size
+
+    def __call__(self, encoder_output, decoder_output):
+      batch_size = encoder_output.data.shape[0]
+      exp_us = []
+      sum_exp = Variable(np.zeros((batch_size, 1), dtype='float32'))
+      
+      d = decoder_output
+      # uncertain
+      # TODO: change to batch_matmul
+      for h in encoder_output:
+        u = F.matmul(self.v, F.tanh(self.w1(h) + self.w2(d)), transb=True)
+        exp_u = F.exp(u)
+        
+        exp_us.append(exp_u)
+        sum_exp += exp_u
+        
+      att = Variable(np.zeros((batch_size, self.hidden_size), dtype='float32'))
+
+      for exp_u, h in zip(exp_us, encoder_output):
+        a = exp_u / sum_exp
+        att += F.reshape(F.batch_matmul(h, a), (batch_size, self.hidden_size))
+
+      return att
