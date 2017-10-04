@@ -20,7 +20,8 @@ class PreprocessedDataset(chainer.dataset.DatasetMixin):
 
         # Load metadata:
         self._datadir = os.path.dirname(metadata_filename)
-        with open(metadata_filename) as f:
+        # with open(metadata_filename) as f:
+        with open(metadata_filename, encoding="utf-8_sig") as f:
             self._metadata = [line.strip().split('|') for line in f]
             hours = sum((int(x[2]) for x in self._metadata)) * \
                 hparams.frame_shift_ms / (3600 * 1000)
@@ -94,4 +95,5 @@ class PreprocessedDataset(chainer.dataset.DatasetMixin):
 
     # implimentation of DatasetMixin
     def get_example(self, i):
-        return self._get_next_example(i)
+        input, mel, lin, _ = self._get_next_example(i)
+        return input, (mel, lin)

@@ -14,6 +14,7 @@ from chainer import training
 from chainer.training import extensions
 
 from datasets.preprocessed_dataset import PreprocessedDataset
+import hparams
 from hparams import hparams, hparams_debug_string, parse_hparams
 from models import create_model
 from util import audio, infolog, plot, textinput, ValueWindow
@@ -50,7 +51,8 @@ def train(log_dir, args):
 
   # Set up dataset
   train = PreprocessedDataset(input_path, hparams)
-  train_iter = chainer.iterators.MultiprocessIterator(train, hparams.batch_size) #TODO:align input sizes (shuffle=False)
+  # train_iter = chainer.iterators.MultiprocessIterator(train, hparams.batch_size) #TODO:align input sizes (shuffle=False)
+  train_iter = chainer.iterators.SerialIterator(train, hparams.batch_size) #TODO:align input sizes (shuffle=False)
   
   # Set up a trainer
   # TODO: change to ParallelUpdater
@@ -58,8 +60,9 @@ def train(log_dir, args):
   trainer = training.Trainer(updater, (args.epoch, 'epoch'), out=args.out)
 
   
-  trainer.extend(extensions.LogReport(logname="log", trigger=(args.summary_interval, 'iteration')))
-  trainer.extend(extensions.snapshot_object(optimizer,  'snapshot_{.updater.iteration}', trigger=(args.checkpoint_interval,'iteration')))
+  trainer.extend(extensions.LogReport(log_name="log", trigger=(args.summary_interval, 'iteration')))
+  trainer.extend(extensions.snapshot(), trigger=(args.checkpoint_interval,'iteration'))
+  # trainer.extend(extensions.snapshot_object(optimizer,  'snapshot_{.updater.iteration}', trigger=(args.checkpoint_interval,'iteration')))
   
   trainer.extend(extensions.dump_graph('main/loss'))
 
@@ -131,6 +134,7 @@ def main():
   parser.add_argument('--gpu', '-g', type=int, default=-1, help='GPU ID (negative value indicates CPU)')
   parser.add_argument('--epoch', '-e', type=int, default=20, help='Number of sweeps over the dataset to train')
   parser.add_argument('--resume', '-r', default='', help='Resume the training from snapshot')
+  parser.add_argument('--out', '-o', default='result', help='Directory to output the result')
   
   args = parser.parse_args()
   
