@@ -6,7 +6,7 @@ import time
 import traceback
 from util import cmudict, textinput
 from util.infolog import log
-
+import chainer
 
 _batches_per_group = 32
 _p_cmudict = 0.5

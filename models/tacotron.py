@@ -1,10 +1,5 @@
-import tensorflow as tf
-from tensorflow.contrib.rnn import GRUCell, MultiRNNCell, OutputProjectionWrapper, ResidualWrapper
-from tensorflow.contrib.seq2seq import BasicDecoder, BahdanauAttention, AttentionWrapper
 from util import textinput
 from util.infolog import log
-from .helpers import TacoTestHelper, TacoTrainingHelper
-from .rnn_wrappers import DecoderPrenetWrapper, ConcatOutputAndAttentionWrapper
 
 import chainer
 from chainer import Variable
