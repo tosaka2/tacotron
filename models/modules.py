@@ -6,8 +6,7 @@ import chainer.links as L
 import numpy as np
 import numpy.random as random
 
-import hparams
-hp = hparams.hparams
+from hparams import hparams as hp
 
 class PreNet(chainer.Chain):
   def __init__(self):

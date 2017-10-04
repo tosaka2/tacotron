@@ -8,7 +8,7 @@ import chainer.links as L
 import numpy as np
 
 from .modules import get_encoder_cbhg, get_decoder_cbhg, PreNet, Attention
-import hparams as hp
+from hparams import hparams as hp
 
 def sequence_embed(embed, xs):
     x_len = [len(x) for x in xs]
