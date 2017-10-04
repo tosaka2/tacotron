@@ -21,7 +21,7 @@ def sequence_embed(embed, xs):
 class Tacotron(chainer.Chain):
 
   def __init__(self, n_source_vocab, n_units):
-    super(Tacotron, self).init()
+    super(Tacotron, self).__init__()
     with self.init_scope():
       self.embed = L.EmbedID(n_source_vocab, n_units)
       self.encoder_prenet = PreNet()

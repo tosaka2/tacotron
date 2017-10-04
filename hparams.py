@@ -31,7 +31,16 @@ class hparams:
   
   # Eval:
   max_iters = 200,
-  griffin_lim_iters = 60
+  griffin_lim_iters = 60,
+
+  # Model:
+  # TODO: set appropriate parameter
+  n_source_vocab = 100,
+  n_units = 256
+
+def parse_hparams(param):
+    print(param)
+    #TODO implement this function
   
 
 def hparams_debug_string():

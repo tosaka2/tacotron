@@ -14,7 +14,7 @@ from chainer import training
 from chainer.training import extensions
 
 from datasets.preprocessed_dataset import PreprocessedDataset
-from hparams import hparams, hparams_debug_string
+from hparams import hparams, hparams_debug_string, parse_hparams
 from models import create_model
 from util import audio, infolog, plot, textinput, ValueWindow
 log = infolog.log
@@ -41,7 +41,7 @@ def train(log_dir, args):
   log(hparams_debug_string())
 
   # Set up model:
-  model = create_model(model_name, hparams)
+  model = create_model('tacotron', hparams)
 
   # Setup an optimizer
   optimizer = chainer.optimizers.Adam()
@@ -138,7 +138,7 @@ def main():
   log_dir = os.path.join(args.base_dir, 'logs-%s' % run_name)
   os.makedirs(log_dir, exist_ok=True)
   infolog.init(os.path.join(log_dir, 'train.log'), run_name, args.slack_url)
-  hparams.parse(args.hparams)
+  parse_hparams(args.hparams)
   train(log_dir, args)
 
 
